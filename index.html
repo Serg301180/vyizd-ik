@@ -209,11 +209,9 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 </nav>
 
 <dialog id="dSet">
-  <h3>Налаштування</h3>
-  <label>Адреса сервера (Apps Script …/exec)</label><input id="sUrl" placeholder="https://script.google.com/macros/s/…/exec">
-  <label>Ключ співробітника</label><input id="sKey">
-  <label>Ключ адміністратора (тільки у вас)</label><input id="sAdmin" type="password" autocomplete="off">
-  <label>Автор виїздів</label><input id="sAuthor">
+  <h3>Вхід</h3>
+  <div class="mut" id="sWho"></div>
+  <label>Пароль</label><input id="sKey" type="password" autocomplete="current-password">
   <label>Мова розпізнавання</label><select id="sLang"><option value="uk-UA">Українська</option><option value="ru-RU">Русский</option></select>
   <div style="display:flex;gap:8px;margin-top:14px"><button class="btn" id="sSave">Зберегти</button><button class="btn sec" id="sClose">Закрити</button></div>
 </dialog>
@@ -273,6 +271,7 @@ function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){ 
 
 const SERVER_URL = 'https://script.google.com/macros/s/AKfycbxHO18W2qZ7LmNoTKzhobWkgQPiu1cfDG8hNLGwL2NX0Rn3LSaZVF72FvJl0zuzvIbDFQ/exec';
 let CFG = lsGet('vyizd_cfg', {url:SERVER_URL,key:'',adminKey:'',author:'',lang:'uk-UA'});
+CFG.url=SERVER_URL; CFG.adminKey='';
 if(!CFG.url) CFG.url=SERVER_URL;
 // Посилання-запрошення: …/vyizd-ik/#k=КЛЮЧ&a=АДМІН_КЛЮЧ&n=Прізвище — ключі в частині після # не йдуть на сервер, одразу стираються з адреси
 (function(){
@@ -280,7 +279,7 @@ if(!CFG.url) CFG.url=SERVER_URL;
   const h=new URLSearchParams(location.hash.slice(1));
   if(!h.get('k')&&!h.get('a')) return;
   if(h.get('k')) CFG.key=h.get('k');
-  if(h.get('a')) CFG.adminKey=h.get('a');
+  
   if(h.get('n')) CFG.author=h.get('n');
   CFG.url=CFG.url||SERVER_URL;
   try{ localStorage.setItem('vyizd_cfg',JSON.stringify(CFG)); }catch(e){}
@@ -387,7 +386,7 @@ function hasContent(d){ return !!d && (d.photos.length||d.newItems.length||d.adh
 function renderObjs(){
   $('#syncInfo').textContent = OBJS.synced ? 'Останнє оновлення: '+new Date(OBJS.synced).toLocaleString('uk-UA') : (CFG.url?'Ще не оновлювалось':'Спочатку вкажіть адресу сервера і ключ у ⚙︎');
   const box=$('#objList'); box.innerHTML='';
-  if(!OBJS.list.length) box.innerHTML='<div class="card empty">Об’єктів немає. '+(CFG.adminKey?'Додайте перший кнопкою нижче.':'Натисніть «Оновити».')+'</div>';
+  if(!OBJS.list.length) box.innerHTML='<div class="card empty">Об’єктів немає. '+(OBJS.admin?'Додайте перший кнопкою нижче.':'Натисніть «Оновити».')+'</div>';
   OBJS.list.forEach(o=>{
     const od=lsGet(odKey(o.id),null), d0=draftOf(o.id), dr=hasContent(d0)?d0:null;
     const d=document.createElement('div'); d.className='obj'+(o.id===CUR?' cur':'');
@@ -395,13 +394,13 @@ function renderObjs(){
     d.innerHTML=`<h3>${esc(o.short||o.id)}</h3><div class="mut">${esc(o.id)}</div>
       <div class="mut" style="margin-top:4px">${od?'✓ офлайн-дані від '+new Date(od.fetched).toLocaleDateString('uk-UA'):'⚠ дані не завантажені'}${regN!=null?' · відкритих позицій: '+regN:(od?' · реєстру немає':'')}</div>
       ${dr?`<div style="margin-top:4px"><span class="pill wait">чернетка від ${dUA(dr.date)}: фото ${dr.photos.length}</span></div>`:''}
-      <div class="acts"><button class="btn">${dr?'Продовжити виїзд':'Почати виїзд'}</button>${OBJS.admin&&CFG.adminKey?'<button class="btn sec" style="flex:0 0 auto">✎</button>':''}</div>`;
+      <div class="acts"><button class="btn">${dr?'Продовжити виїзд':'Почати виїзд'}</button>${OBJS.admin?'<button class="btn sec" style="flex:0 0 auto">✎</button>':''}</div>`;
     const [go,ed]=d.querySelectorAll('.acts button');
     go.onclick=()=>{ if(!od){ toast('Дані об’єкта не завантажені — працюю без реєстру та учасників'); } loadObj(o.id,true); };
     if(ed) ed.onclick=()=>openObjDlg(o.id);
     box.appendChild(d);
   });
-  $('#adminBox').hidden = !(CFG.adminKey && (OBJS.admin || !OBJS.synced));
+  $('#adminBox').hidden = !OBJS.admin;
   renderHist();
 }
 function loadObj(id,goTab){
@@ -603,7 +602,7 @@ function renderPreview(){ if(V&&OD) $('#preview').textContent=buildText(); }
 /* ====== ФОРМУВАННЯ → ЧЕРГА ====== */
 function b64(blob){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=rej; r.readAsDataURL(blob); }); }
 async function finalize(){
-  if(!CFG.url||!(CFG.key||CFG.adminKey)){ toast('Вкажіть сервер і ключ у ⚙︎ — без цього не буде куди відправити'); openSet(); return; }
+  if(!CFG.url||!(CFG.key||CFG.adminKey)){ toast('Увійдіть — введіть пароль у ⚙︎'); openSet(); return; }
   if(!confirm(`Сформувати виїзд ${dUA(V.date)} по «${OD.object.short||CUR}» і поставити у відправку?`)) return;
   const btn=$('#bFinal'); btn.disabled=true; btn.textContent='Формую…';
   try{
@@ -659,15 +658,23 @@ async function discard(){
 }
 
 /* ====== Налаштування ====== */
-function openSet(){ $('#sUrl').value=CFG.url; $('#sKey').value=CFG.key; $('#sAdmin').value=CFG.adminKey; $('#sAuthor').value=CFG.author; $('#sLang').value=CFG.lang; $('#dSet').showModal(); }
+function openSet(){ $('#sKey').value=CFG.key; $('#sLang').value=CFG.lang; $('#sWho').textContent=CFG.author?('Зараз: '+CFG.author+(OBJS.admin?' (адміністратор)':'')):'Введіть свій пароль'; $('#dSet').showModal(); }
 $('#bSet').onclick=openSet;
 $('#sClose').onclick=()=>$('#dSet').close();
 $('#sSave').onclick=async()=>{
-  CFG={url:$('#sUrl').value.trim(),key:$('#sKey').value.trim(),adminKey:$('#sAdmin').value.trim(),author:$('#sAuthor').value.trim(),lang:$('#sLang').value};
+  const pw=$('#sKey').value.trim(); CFG.lang=$('#sLang').value;
+  if(pw && pw!==CFG.key){
+    if(!navigator.onLine){ toast('Для входу потрібен інтернет'); return; }
+    try{
+      const r=await fetch(SERVER_URL+'?'+new URLSearchParams({key:pw})); const j=await r.json();
+      if(!j.ok) throw new Error(j.error);
+      CFG.key=pw; CFG.author=j.user||''; OBJS.admin=!!j.admin; lsSet('vyizd_objs',OBJS);
+    }catch(e){ toast('Невірний пароль'); return; }
+  }
   lsSet('vyizd_cfg',CFG); await IDB.put('kv','url',CFG.url);
   if(V){ V.author=CFG.author; save(); }
-  $('#dSet').close(); toast('Збережено'); renderObjs();
-  if(CFG.url&&navigator.onLine) syncAll();
+  $('#dSet').close(); toast(CFG.author?'Вітаю, '+CFG.author+'!':'Збережено'); renderObjs();
+  if(CFG.key&&navigator.onLine) syncAll();
 };
 
 /* ====== Навігація / події ====== */
@@ -719,7 +726,8 @@ function renderAll(){
   }
   if(!SR) toast('Цей браузер не розпізнає мову — відкрийте в Chrome. Можна диктувати мікрофоном клавіатури.',5000);
   kick();
-  if((CFG.key||CFG.adminKey) && navigator.onLine && !OBJS.synced) syncAll();
+  if(!CFG.key) setTimeout(openSet,400);
+  else if(navigator.onLine && !OBJS.synced) syncAll();
 })();
 </script>
 </body>
