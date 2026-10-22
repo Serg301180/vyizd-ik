@@ -271,7 +271,22 @@ const nowT=()=>{ const d=new Date(); return pad(d.getHours())+':'+pad(d.getMinut
 function lsGet(k,def){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):def; }catch(e){ return def; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){ toast('Пам’ять телефону: '+e.message); } }
 
-let CFG = lsGet('vyizd_cfg', {url:'',key:'',adminKey:'',author:'Любченко С.О.',lang:'uk-UA'});
+const SERVER_URL = 'https://script.google.com/macros/s/AKfycbxHO18W2qZ7LmNoTKzhobWkgQPiu1cfDG8hNLGwL2NX0Rn3LSaZVF72FvJl0zuzvIbDFQ/exec';
+let CFG = lsGet('vyizd_cfg', {url:SERVER_URL,key:'',adminKey:'',author:'',lang:'uk-UA'});
+if(!CFG.url) CFG.url=SERVER_URL;
+// Посилання-запрошення: …/vyizd-ik/#k=КЛЮЧ&a=АДМІН_КЛЮЧ&n=Прізвище — ключі в частині після # не йдуть на сервер, одразу стираються з адреси
+(function(){
+  if(!location.hash || location.hash.length<3) return;
+  const h=new URLSearchParams(location.hash.slice(1));
+  if(!h.get('k')&&!h.get('a')) return;
+  if(h.get('k')) CFG.key=h.get('k');
+  if(h.get('a')) CFG.adminKey=h.get('a');
+  if(h.get('n')) CFG.author=h.get('n');
+  CFG.url=CFG.url||SERVER_URL;
+  try{ localStorage.setItem('vyizd_cfg',JSON.stringify(CFG)); }catch(e){}
+  history.replaceState(null,'',location.pathname);
+  setTimeout(()=>{ toast('Налаштовано з посилання ✓'); },300);
+})();
 let OBJS = lsGet('vyizd_objs', {list:[], admin:false, synced:null});   // список об'єктів
 let CUR = lsGet('vyizd_cur', null);                                      // обраний шифр
 let OD = null;   // {object, registry, fetched} для CUR
@@ -704,6 +719,7 @@ function renderAll(){
   }
   if(!SR) toast('Цей браузер не розпізнає мову — відкрийте в Chrome. Можна диктувати мікрофоном клавіатури.',5000);
   kick();
+  if((CFG.key||CFG.adminKey) && navigator.onLine && !OBJS.synced) syncAll();
 })();
 </script>
 </body>
