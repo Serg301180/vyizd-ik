@@ -689,7 +689,9 @@ async function addPhotos(files){
   for(const f of files){ try{ const blob=await compress(f); const id='ph'+Date.now()+Math.random().toString(36).slice(2,6); await IDB.put('ph',id,blob); V.photos.push({id,caption:'',link:'',t:nowT()}); save(); }catch(e){ toast('Фото не додано: '+e.message); } }
   renderPhotos();
 }
-const photoName=(p,i)=>`${String(i+1).padStart(2,'0')}_${slug(p.link||'загальне')}.jpg`;
+const yymmdd=()=>V.date.slice(2).replace(/-/g,'');
+const photoName=(p,i)=>`${yymmdd()}_${(V.time||'0000').replace(':','')}_${String(i+1).padStart(2,'0')}_${slug(p.link||'загальне')}.jpg`;
+const photoPath=(p,i)=>`7 Фото загальне/${yymmdd()}/${photoName(p,i)}`;
 async function renderPhotos(){
   const box=$('#photos'); box.innerHTML='';
   const links=[['','загальне']].concat(allItems().map(it=>[it.code,it.code+' '+it.text.slice(0,40)])).concat(V.newItems.map((n,i)=>['нове-'+(i+1),'Нове '+(i+1)+': '+(n.text||'').slice(0,30)])).concat([['конструктив','конструктив / роботи'],['ОП','охорона праці'],['журнали','журнали']]);
@@ -731,7 +733,7 @@ function buildText(){
   const ot=OT.filter(([k])=>V.ot[k]);
   L.push('','ОХОРОНА ПРАЦІ:'); ot.forEach(([k,l])=>L.push(`– ${l}: ${V.ot[k]==='yes'?'так':V.ot[k]==='no'?'НІ':'—'}`)); if(V.otNote) L.push('Зауваження: '+V.otNote); if(!ot.length&&!V.otNote) L.push('– не перевірялась');
   if(V.files.length){ L.push('',`РІЗНЕ (папка «Різне»): ${V.files.length} шт.`); V.files.forEach((f,i)=>L.push(`– ${miscName(f,i)}: ${f.comment||'— без коментаря'}`)); }
-  L.push('',`ФОТО: ${V.photos.length} шт.`); V.photos.forEach((p,i)=>{ if(p.caption||p.link) L.push(`– ${photoName(p,i)}: ${p.caption||''}`); });
+  L.push('',`ФОТО: ${V.photos.length} шт. (папка «7 Фото загальне/${yymmdd()}»)`); V.photos.forEach((p,i)=>{ if(p.caption||p.link) L.push(`– ${photoName(p,i)}: ${p.caption||''}`); });
   if(V.summary) L.push('','ПІДСУМОК:',V.summary);
   return L.join('\n');
 }
@@ -745,7 +747,7 @@ function exportJSON(){
     site:{workers:V.workers,workers_total:Object.values(V.workers).reduce((a,b)=>a+b,0),equipment:V.equip,works:V.works,
       journals:JOURNALS.map(j=>({name:j,status:V.journals[j]||null,note:V.journalNotes[j]||''})),
       ot:Object.fromEntries(OT.map(([k,l])=>[l,V.ot[k]||null])),ot_note:V.otNote},
-    photos:V.photos.map((p,i)=>({file:photoName(p,i),caption:p.caption,link:p.link,time:p.t})),
+    photos:V.photos.map((p,i)=>({file:photoPath(p,i),caption:p.caption,link:p.link,time:p.t})),
     misc:V.files.map((f,i)=>({file:'Різне/'+miscName(f,i),original:f.name,mime:f.mime,size:f.size,comment:f.comment,time:f.t})),
     summary:V.summary, text:buildText(), created:new Date().toISOString(),
     note:'Статуси питань — пропозиція з майданчика; у REGISTRY_ZAUVAZHEN.json вносяться після перевірки документів і «ок».' };
@@ -765,7 +767,7 @@ async function finalize(){
     const base={key:CFG.adminKey||CFG.key, object:CUR, folder};
     for(let i=0;i<V.photos.length;i++){
       const p=V.photos[i]; const blob=await IDB.get('ph',p.id); if(!blob) continue;
-      await IDB.put('outbox', `${V.id}_${String(i).padStart(3,'0')}`, {visit:V.id, label:photoName(p,i), body:JSON.stringify({...base,action:'photo',name:photoName(p,i),b64:await b64(blob)})});
+      await IDB.put('outbox', `${V.id}_${String(i).padStart(3,'0')}`, {visit:V.id, label:photoName(p,i), body:JSON.stringify({...base,action:'photo',name:photoName(p,i),caption:p.caption||'',b64:await b64(blob)})});
     }
     for(let i=0;i<V.files.length;i++){
       const f=V.files[i]; const blob=await IDB.get('ph',f.id); if(!blob) continue;
