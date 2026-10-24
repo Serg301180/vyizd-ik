@@ -486,7 +486,8 @@ async function syncAll(){
     let n=0;
     for(const o of j.objects){ try{ const d=await api({action:'object',id:o.id}); lsSet(odKey(o.id),{object:d.object,registry:d.registry,graph:d.graph||null,project:d.project||null,fetched:new Date().toISOString()}); n++; }catch(e){ toast(o.id+': '+e.message,4000); } }
     toast(`Оновлено: ${n} з ${j.objects.length} об'єктів — доступні офлайн`);
-    if(CUR) loadObj(CUR,false);
+    if(CUR && !j.objects.some(o=>o.id===CUR)){ CUR=null; V=null; OD=null; try{ localStorage.removeItem('vyizd_cur'); }catch(e){} renderAll(); showTab('t-obj'); }
+    else if(CUR) loadObj(CUR,false);
   }catch(e){ toast('Не вдалося оновити: '+e.message,4500); }
   finally{ btn.disabled=false; btn.textContent='⟳ Оновити об’єкти (перед виїздом, з інтернетом)'; renderObjs(); }
 }
@@ -535,7 +536,7 @@ async function openObjDlg(id){
   $('#oPeople').value=peopleToText(o.people); $('#oOrgs').value=(o.orgs||[]).join('\n');
   $('#dObj').showModal();
 }
-$('#oId').addEventListener('change',()=>{ const s=SEEDS[$('#oId').value.trim()]; if(s&&!$('#oPeople').value){ $('#oShort').value=s.short; $('#oName').value=s.name; $('#oPeople').value=s.people.join('\n'); $('#oOrgs').value=s.orgs.join('\n'); toast('Підставлено дані з шаблону'); } });
+$('#oId').addEventListener('change',()=>{ const s=!editId&&SEEDS[$('#oId').value.trim()]; if(s&&!$('#oPeople').value){ $('#oShort').value=s.short; $('#oName').value=s.name; $('#oPeople').value=s.people.join('\n'); $('#oOrgs').value=s.orgs.join('\n'); toast('Підставлено дані з шаблону'); } });
 $('#oClose').onclick=()=>$('#dObj').close();
 $('#oSave').onclick=async()=>{
   const obj={id:$('#oId').value.trim(), short:$('#oShort').value.trim(), name:$('#oName').value.trim(), link:$('#oLink').value.trim(),
@@ -548,7 +549,17 @@ $('#oSave').onclick=async()=>{
 };
 $('#oDel').onclick=async()=>{
   if(!editId||!(await ask('Видалити об’єкт '+editId+' зі списку? Папка на Drive не зачіпається.','Видалити'))) return;
-  try{ await apiPost({action:'deleteObject',id:editId}); localStorage.removeItem(odKey(editId)); $('#dObj').close(); await syncAll(); }catch(e){ toast(e.message); }
+  const id=editId;
+  try{
+    await apiPost({action:'deleteObject',id});
+    $('#dObj').close();
+    try{ localStorage.removeItem(odKey(id)); }catch(e){}
+    const dr=draftOf(id); if(dr){ for(const x of [...(dr.photos||[]),...(dr.files||[])]) await IDB.del('ph',x.id); try{ localStorage.removeItem(vKey(id)); }catch(e){} }
+    OBJS.list=OBJS.list.filter(o=>o.id!==id); lsSet('vyizd_objs',OBJS);
+    if(CUR===id){ CUR=null; V=null; OD=null; try{ localStorage.removeItem('vyizd_cur'); }catch(e){} }
+    renderAll(); showTab('t-obj'); toast('Об\u2019єкт '+id+' видалено зі списку');
+    syncAll();
+  }catch(e){ toast('Не вдалося видалити: '+e.message,5000); }
 };
 $('#bAddObj').onclick=()=>openObjDlg(null);
 
