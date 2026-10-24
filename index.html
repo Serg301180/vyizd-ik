@@ -103,6 +103,8 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .hr{height:1px;background:var(--line);margin:10px 0}
 .empty{text-align:center;color:var(--mute);padding:24px 8px}
+.resp{font-size:13px;margin-top:4px;color:var(--ink)}
+.resp b{color:var(--head)}
 .acw{position:relative}
 .ac{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;background:var(--card);border:1px solid var(--line);border-radius:10px;max-height:300px;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.35)}
 .ac button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);padding:10px 12px;font:inherit}
@@ -463,7 +465,7 @@ function parseRegistry(j){
         if(code&&typeof text==='string'&&text&&String(code).length<20){
           if(!isClosed(o)&&!seen.has(String(code))){ seen.add(String(code));
             const type=String(pick(o,['type','typ','registry','reestr'])||hint||(String(code).trim().startsWith('А')?'А':'О'));
-            items.push({code:String(code),text,type,act:pick(o,['act','akt','act_no','kb2v']),blocking:!!(o.blocking||o.blokuiucha),repeat:pick(o,['counter','repeat','lichylnyk','times']),deadline:pick(o,['deadline','strok','term'])}); }
+            items.push({code:String(code),text,type,act:pick(o,['act','akt','act_no','kb2v']),blocking:!!(o.blocking||o.blokuiucha),repeat:pick(o,['counter','repeat','lichylnyk','times']),deadline:pick(o,['deadline','strok','term']),resp:String(pick(o,['resp','responsible','vidpovidalnyi','vidp'])||'')}); }
         } else if(name&&org&&!text){ people.push({name:String(name),org:String(org),role:String(pick(o,['position','posada','role'])||''),tel:String(pick(o,['tel','phone','telefon'])||''),email:String(pick(o,['email','mail','pochta'])||'')}); }
         else walk(o,hint);
       } else walk(o,hint); } }
@@ -590,7 +592,7 @@ function renderItems(){
   allItems().forEach(it=>{
     const st=V.items[it.code]||{}; const d=document.createElement('div'); d.className='item';
     const meta=[it.act?'акт '+it.act:'',it.blocking?'блокуюча':'',it.repeat?'раз: '+it.repeat:'',it.deadline?'строк '+it.deadline:''].filter(Boolean).join(' · ');
-    d.innerHTML=`<div><span class="code">${esc(it.code)}</span>${esc(it.text)}</div>${meta?`<div class="mut">${esc(meta)}</div>`:''}<div class="seg">${['closed','partial','open'].map(v=>`<button type="button" data-v="${v}" class="${st.status===v?'on':''}">${ST_LBL[v]}</button>`).join('')}</div>`;
+    d.innerHTML=`<div><span class="code">${esc(it.code)}</span>${esc(it.text)}</div>${it.resp?`<div class="resp">👤 Відповідальний: <b>${esc(it.resp)}</b></div>`:''}${meta?`<div class="mut">${esc(meta)}</div>`:''}<div class="seg">${['closed','partial','open'].map(v=>`<button type="button" data-v="${v}" class="${st.status===v?'on':''}">${ST_LBL[v]}</button>`).join('')}</div>`;
     d.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{ const c=V.items[it.code]||{}; c.status=c.status===b.dataset.v?'':b.dataset.v; V.items[it.code]=c; save(); renderItems(); });
     d.appendChild(mkTA(st.comment,'Коментар / підстава (документ, дата)',v=>{ (V.items[it.code]=V.items[it.code]||{}).comment=v; save(); }));
     box.appendChild(d);
@@ -731,7 +733,7 @@ function buildText(){
   L.push('','ПРИСУТНІ:'); pres.length?pres.forEach(p=>L.push(`– ${p.name} (${[p.org,p.role].filter(Boolean).join(', ')})${[p.tel,p.email].filter(Boolean).length?' — '+[p.tel,p.email].filter(Boolean).join(', '):''}${p.added?' [додано на виїзді]':''}`)):L.push('– не відмічено');
   const its=allItems().filter(i=>(V.items[i.code]||{}).status||(V.items[i.code]||{}).comment);
   L.push('','РОЗГЛЯНУТІ ПИТАННЯ (пропозиція ІК, до перевірки за документами Р/О/П):');
-  its.length?its.forEach(i=>{ const s=V.items[i.code]; L.push(`– [${i.code}] ${i.text} — ${ST_LBL[s.status]||'без оцінки'}${s.comment?'. '+s.comment:''}`); }):L.push('– не розглядались');
+  its.length?its.forEach(i=>{ const s=V.items[i.code]; L.push(`– [${i.code}] ${i.text}${i.resp?' (відп.: '+i.resp+')':''} — ${ST_LBL[s.status]||'без оцінки'}${s.comment?'. '+s.comment:''}`); }):L.push('– не розглядались');
   if(allItems().length) L.push(`   (не оцінено на виїзді: ${allItems().filter(i=>!(V.items[i.code]||{}).status).length} з ${allItems().length})`);
   if(V.newItems.length){ L.push('','НОВІ ЗАУВАЖЕННЯ (вперше):'); V.newItems.forEach((n,i)=>L.push(`– ${n.type}-нове-${i+1}: ${n.text||''}${n.resp?'. Відп.: '+n.resp:''}${n.deadline?'. Строк: '+dUA(n.deadline):''}`)); }
   const ws=Object.entries(V.workers).filter(([,v])=>v>0);
@@ -753,7 +755,7 @@ function exportJSON(){
   return { schema:V.schema, object_id:O.id, object:O.name||O.short, date:V.date, time:V.time, author:V.author, weather:V.weather, temp:V.temp, meeting:V.meeting,
     registry_source:OD.registry&&OD.registry.updated?'REGISTRY_ZAUVAZHEN.json від '+OD.registry.updated:null,
     present:allPeople().filter(p=>V.present[p.name]).map(p=>({name:p.name,org:p.org,role:p.role||'',tel:p.tel||'',email:p.email||'',added_on_site:!!p.added})),
-    items:allItems().map(i=>({code:i.code,type:i.type,text:i.text,status:(V.items[i.code]||{}).status||null,comment:(V.items[i.code]||{}).comment||''})),
+    items:allItems().map(i=>({code:i.code,type:i.type,text:i.text,resp:i.resp||'',status:(V.items[i.code]||{}).status||null,comment:(V.items[i.code]||{}).comment||''})),
     new_items:V.newItems,
     site:{workers:V.workers,workers_total:Object.values(V.workers).reduce((a,b)=>a+b,0),equipment:V.equip,works:V.works,
       journals:JOURNALS.map(j=>({name:j,status:V.journals[j]||null,note:V.journalNotes[j]||''})),
