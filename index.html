@@ -379,8 +379,13 @@ let HIST = lsGet('vyizd_hist', []);
 
 const odKey = id => 'vyizd_obj_'+id;
 const vKey  = id => 'vyizd_v_'+id;
+function siteOrgs(){
+  const list=[...(REGP.contractors||[]).map(c=>c.name), ...((OD&&OD.object.orgs)||[])];
+  const uniq=[...new Set(list.map(x=>String(x).trim()).filter(Boolean))];
+  return uniq.length?uniq:['Генпідрядник'];
+}
 function blankVisit(){
-  const orgs = (OD && OD.object.orgs && OD.object.orgs.length) ? OD.object.orgs : ['Генпідрядник'];
+  const orgs = siteOrgs();
   return { schema:'vyizd-ik-2', id:'v'+Date.now(), date:today(), time:nowT(), weather:'', temp:'', meeting:false, author:CFG.author,
     present:{}, extraPeople:[], items:{}, adhoc:[], newItems:[],
     workers:Object.fromEntries(orgs.map(o=>[o,0])), equip:{}, works:'', journals:{}, journalNotes:{}, ot:{}, otNote:'',
@@ -455,7 +460,7 @@ function pick(o,keys){ for(const k of keys){ if(o[k]!=null&&o[k]!=='') return o[
 function isClosed(o){ if(o.closed_date||o.closedDate||o.closed===true) return true; const s=String(o.status||o.state||'').toLowerCase(); return /закр|closed|викон/.test(s)&&!/не\s*викон|частк/.test(s); }
 function parseRegistry(j){
   const items=[], people=[], seen=new Set();
-  if(!j) return {items,people};
+  if(!j) return {items,people,contractors:[]};
   (function walk(x,hint){
     if(Array.isArray(x)){ for(const o of x){
       if(o&&typeof o==='object'&&!Array.isArray(o)){
@@ -469,13 +474,21 @@ function parseRegistry(j){
         } else if(name&&org&&!text){ people.push({name:String(name),org:String(org),role:String(pick(o,['position','posada','role'])||''),tel:String(pick(o,['tel','phone','telefon'])||''),email:String(pick(o,['email','mail','pochta'])||'')}); }
         else walk(o,hint);
       } else walk(o,hint); } }
-    else if(x&&typeof x==='object'){ for(const [k,v] of Object.entries(x)){ if(k==='protocols'||k==='closed') continue;
+    else if(x&&typeof x==='object'){ for(const [k,v] of Object.entries(x)){ if(k==='protocols'||k==='closed'||k==='contractors') continue;
       const t=/^(o|о|reestr_o|zagalni)$/i.test(k)?'О':/^(a|а|reestr_a|akty|po_aktah)$/i.test(k)?'А':hint; walk(v,t); } }
   })(j,'');
   items.sort((a,b)=>(a.type==='А')-(b.type==='А')||a.code.localeCompare(b.code,'uk',{numeric:true}));
-  return {items,people};
+  // Підрядники/суміжники: contractors[] (name, role, edrpou, works, active)
+  const contractors=[];
+  (Array.isArray(j.contractors)?j.contractors:[]).forEach(c=>{
+    if(!c) return; const name=String(typeof c==='string'?c:(c.name||c.nazva||c.org||'')).trim(); if(!name) return;
+    if(c.active===false) return;
+    contractors.push({name, role:String(c.role||c.rol||''), works:String(c.works||c.roboty||''), edrpou:String(c.edrpou||'')});
+  });
+  contractors.sort((a,b)=>(/генпідр|генерал/i.test(b.role)?1:0)-(/генпідр|генерал/i.test(a.role)?1:0));
+  return {items,people,contractors};
 }
-let REGP={items:[],people:[]};
+let REGP={items:[],people:[],contractors:[]};
 
 /* ====== Об'єкти ====== */
 function parsePeople(txt){ return String(txt||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{ const [name,org,role,tel,email]=l.split('|').map(s=>(s||'').trim()); return {name,org:org||'',role:role||'',tel:tel||'',email:email||''}; }).filter(p=>p.name); }
@@ -522,6 +535,10 @@ function loadObj(id,goTab){
   REGP=parseRegistry(OD.registry&&OD.registry.data);
   V=draftOf(id) || blankVisit();
   V.files=V.files||[];
+  // нові підрядники з реєстру — додати в чернетку з нулем; заглушку «Генпідрядник» прибрати, якщо є реальний список
+  const so=siteOrgs();
+  if(so[0]!=='Генпідрядник' && 'Генпідрядник' in V.workers && !V.workers['Генпідрядник']) delete V.workers['Генпідрядник'];
+  so.forEach(o=>{ if(!(o in V.workers)) V.workers[o]=0; });
   renderAll();
   if(goTab) showTab('t-nar');
 }
@@ -606,7 +623,7 @@ function renderItems(){
 function respCandidates(){
   const out=[], seen=new Set();
   allPeople().forEach(p=>{ const v=p.name+(p.org?' ('+p.org+')':''); if(!seen.has(v)){ seen.add(v); out.push({label:p.name, sub:[p.org,p.role].filter(Boolean).join(' · '), value:v, hay:[p.name,p.org,p.role].join(' ')}); } });
-  const orgs=new Set([...(OD.object.orgs||[]), ...Object.keys(V.workers), ...allPeople().map(p=>p.org).filter(Boolean)]);
+  const orgs=new Set([...(REGP.contractors||[]).map(c=>c.name), ...(OD.object.orgs||[]), ...Object.keys(V.workers), ...allPeople().map(p=>p.org).filter(Boolean)]);
   orgs.forEach(o=>{ if(!seen.has(o)){ seen.add(o); out.push({label:o, sub:'організація', value:o, hay:o}); } });
   return out;
 }
@@ -665,7 +682,10 @@ function stepper(label,val,onSet){
   b.addEventListener('keydown',e=>{ if(e.key==='Enter') b.blur(); });
   return d;
 }
-function renderWorkers(){ const box=$('#workers'); box.innerHTML=''; Object.keys(V.workers).forEach(o=>box.appendChild(stepper(o,V.workers[o],v=>{ V.workers[o]=v; save(); wSum(); }))); wSum(); }
+function renderWorkers(){ const box=$('#workers'); box.innerHTML='';
+  const roles=Object.fromEntries((REGP.contractors||[]).map(c=>[c.name,[c.role,c.works].filter(Boolean).join(' · ')]));
+  Object.keys(V.workers).forEach(o=>{ const el=stepper(o,V.workers[o],v=>{ V.workers[o]=v; save(); wSum(); }); if(roles[o]){ const m=document.createElement('div'); m.className='mut'; m.textContent=roles[o]; el.querySelector('.nm').appendChild(m); } box.appendChild(el); });
+  wSum(); }
 function wSum(){ $('#wSum').textContent='разом '+Object.values(V.workers).reduce((a,b)=>a+b,0); }
 function renderEquip(){ const box=$('#equip'); box.innerHTML=''; [...new Set(EQUIP.concat(Object.keys(V.equip)))].forEach(n=>box.appendChild(stepper(n,V.equip[n]||0,v=>{ if(v) V.equip[n]=v; else delete V.equip[n]; save(); }))); }
 function renderJournals(){
