@@ -772,10 +772,11 @@ function buildText(){
 }
 function exportJSON(){
   const O=OD.object;
-  return { schema:V.schema, object_id:O.id, object:O.name||O.short, date:V.date, time:V.time, author:V.author, weather:V.weather, temp:V.temp, meeting:V.meeting,
+  return { schema:'vyizd-ik-3', object_id:O.id, object:O.name||O.short, date:V.date, time:V.time, author:V.author, weather:V.weather, temp:V.temp, meeting:V.meeting,
     registry_source:OD.registry&&OD.registry.updated?'REGISTRY_ZAUVAZHEN.json від '+OD.registry.updated:null,
+    registry:OD.registry&&OD.registry.data?{updated_iso:OD.registry.updated_iso||null,size:OD.registry.size??null,md5:OD.registry.md5||null,file_id:OD.registry.file_id||null,fetched_iso:OD.fetched||null,open_count:REGP.items.length}:null,
     present:allPeople().filter(p=>V.present[p.name]).map(p=>({name:p.name,org:p.org,role:p.role||'',tel:p.tel||'',email:p.email||'',added_on_site:!!p.added})),
-    items:allItems().map(i=>({code:i.code,type:i.type,text:i.text,resp:i.resp||'',status:(V.items[i.code]||{}).status||null,comment:(V.items[i.code]||{}).comment||''})),
+    items:allItems().map(i=>({code:i.code,type:i.type,text:i.text,resp:i.resp||'',status:(V.items[i.code]||{}).status||'not_reviewed',comment:(V.items[i.code]||{}).comment||''})),
     new_items:V.newItems,
     site:{workers:V.workers,workers_total:Object.values(V.workers).reduce((a,b)=>a+b,0),equipment:V.equip,works:V.works,
       journals:JOURNALS.map(j=>({name:j,status:V.journals[j]||null,note:V.journalNotes[j]||''})),
