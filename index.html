@@ -806,7 +806,7 @@ async function finalize(){
       const f=V.files[i]; const blob=await IDB.get('ph',f.id); if(!blob) continue;
       await IDB.put('outbox', `${V.id}_${String(600+i)}`, {visit:V.id, label:miscName(f,i), body:JSON.stringify({...base,action:'file',name:miscName(f,i),mime:f.mime,comment:f.comment,b64:await b64(blob)})});
     }
-    await IDB.put('outbox', `${V.id}_999`, {visit:V.id, label:'дані', body:JSON.stringify({...base,action:'vyizd',name:folder+'_vyizd.json',json:exportJSON(),text:buildText()})});
+    await IDB.put('outbox', `${V.id}_!data`, {visit:V.id, label:'дані', body:JSON.stringify({...base,action:'vyizd',name:folder+'_vyizd.json',json:exportJSON(),text:buildText()})});
     for(const p of V.photos) await IDB.del('ph',p.id);
     for(const f of V.files) await IDB.del('ph',f.id);
     HIST.unshift({vid:V.id, obj:CUR, short:OD.object.short||CUR, date:V.date, time:V.time, folder, files:V.photos.length+V.files.length+1, created:new Date().toISOString()});
@@ -819,10 +819,11 @@ async function finalize(){
   finally{ btn.disabled=false; btn.textContent='✔ Сформувати і відправити'; }
 }
 async function requestSync(){ try{ const r=await navigator.serviceWorker.ready; if(r.sync) await r.sync.register('outbox'); }catch(e){} }
-let pendingByVisit={};
+let pendingByVisit={}, failByVisit={};
 async function refreshQueue(){
-  const keys=await IDB.keys('outbox'); pendingByVisit={};
-  keys.forEach(k=>{ const v=String(k).split('_')[0]; pendingByVisit[v]=(pendingByVisit[v]||0)+1; });
+  const keys=await IDB.keys('outbox'); pendingByVisit={}; failByVisit={};
+  for(const k of keys){ const v=String(k).split('_')[0]; pendingByVisit[v]=(pendingByVisit[v]||0)+1;
+    const it=await IDB.get('outbox',k); if(it&&it.fail){ failByVisit[v]=it.fail; } }
   const n=keys.length, q=$('#bQueue');
   q.hidden=!n; q.textContent='⬆ '+n;
   renderHist();
@@ -839,7 +840,7 @@ async function kick(){
 function renderHist(){
   const box=$('#hist'); if(!box) return;
   if(!HIST.length){ box.innerHTML='<div class="mut">Ще немає</div>'; return; }
-  box.innerHTML=HIST.slice(0,15).map(h=>{ const p=pendingByVisit[h.vid]; return `<div class="cnt"><div class="nm"><b>${esc(h.short)}</b><div class="mut">${dUA(h.date)} ${h.time||''} · файлів ${h.files} · _виїзди/${esc(h.folder)}</div></div>${p?`<span class="pill wait">у черзі ${p}</span>`:'<span class="pill ok">✓ на Drive</span>'}</div>`; }).join('');
+  box.innerHTML=HIST.slice(0,15).map(h=>{ const p=pendingByVisit[h.vid]; return `<div class="cnt"><div class="nm"><b>${esc(h.short)}</b><div class="mut">${dUA(h.date)} ${h.time||''} · файлів ${h.files} · _виїзди/${esc(h.folder)}</div></div>${failByVisit[h.vid]?`<span class="pill" style="color:var(--bad);border-color:var(--bad)">⚠ помилка</span>`:p?`<span class="pill wait">у черзі ${p}</span>`:'<span class="pill ok">✓ на Drive</span>'}</div>${failByVisit[h.vid]?`<div class="mut" style="color:var(--bad);margin:-4px 0 6px">Сервер: ${esc(failByVisit[h.vid])}. Покажіть адміністратору.</div>`:''}`; }).join('');
 }
 function download(){
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(exportJSON(),null,2)],{type:'application/json'}));

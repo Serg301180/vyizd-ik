@@ -22,24 +22,28 @@ const IDB = {
   keys: s => tx(s, 'readonly', st => st.getAllKeys())
 };
 let flushing = false;
-// Відправляє чергу по порядку ключів. Сервер ідемпотентний: повтор фото пропускається, json перезаписується.
+// Відправляє чергу. Помилка мережі — зупиняємось і повторюємо пізніше.
+// Помилка сервера по одному запису (напр. об'єкт видалено) — запис позначається і НЕ блокує решту черги.
 async function flushOutbox(onProgress) {
   if (flushing) return { busy: true };
-  flushing = true; let sent = 0, err = null;
+  flushing = true; let sent = 0, err = null; const failed = [];
   try {
     const url = await IDB.get('kv', 'url');
     if (!url) return { err: 'Не вказано адресу сервера' };
     const keys = (await IDB.keys('outbox')).sort();
     for (const k of keys) {
       const it = await IDB.get('outbox', k); if (!it) continue;
+      let j;
       try {
         const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: it.body });
-        const j = await r.json();
-        if (!j.ok) throw new Error(j.error || 'помилка сервера');
-        await IDB.del('outbox', k); sent++;
-        if (onProgress) onProgress(sent, keys.length, it);
-      } catch (e) { err = e.message; break; }
+        j = await r.json();
+      } catch (e) { err = 'немає зв\'язку з сервером'; break; }       // мережа — стоп
+      if (j && j.ok) { await IDB.del('outbox', k); sent++; if (onProgress) onProgress(sent, keys.length, it); }
+      else {                                                            // сервер відмовив — позначити, йти далі
+        it.fail = String((j && j.error) || 'помилка сервера'); it.tries = (it.tries || 0) + 1; it.failedAt = new Date().toISOString();
+        await IDB.put('outbox', k, it); failed.push({ key: k, label: it.label, visit: it.visit, error: it.fail });
+      }
     }
   } finally { flushing = false; }
-  return { sent, err };
+  return { sent, err: err || (failed.length ? failed.length + ' запис(ів) відхилено сервером: ' + failed[0].error : null), failed };
 }
