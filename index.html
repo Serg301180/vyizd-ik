@@ -474,7 +474,7 @@ function parseRegistry(j){
         } else if(name&&org&&!text){ people.push({name:String(name),org:String(org),role:String(pick(o,['position','posada','role'])||''),tel:String(pick(o,['tel','phone','telefon'])||''),email:String(pick(o,['email','mail','pochta'])||'')}); }
         else walk(o,hint);
       } else walk(o,hint); } }
-    else if(x&&typeof x==='object'){ for(const [k,v] of Object.entries(x)){ if(k==='protocols'||k==='closed'||k==='contractors') continue;
+    else if(x&&typeof x==='object'){ for(const [k,v] of Object.entries(x)){ if(k==='protocols'||k==='closed'||k==='contractors'||k==='positions') continue;
       const t=/^(o|о|reestr_o|zagalni)$/i.test(k)?'О':/^(a|а|reestr_a|akty|po_aktah)$/i.test(k)?'А':hint; walk(v,t); } }
   })(j,'');
   items.sort((a,b)=>(a.type==='А')-(b.type==='А')||a.code.localeCompare(b.code,'uk',{numeric:true}));
